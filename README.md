@@ -1,4 +1,4 @@
-# corvid19
+# covid19
 Some very basic scripts to analyse/graph UK Corvid-19 data 
 ## Caveats:
 1) Due to timing changes in UK government release of death data there are inaccuracies in dates of mortality figures. I may be able to correct these at some point and the error is probably fairly marginal.
