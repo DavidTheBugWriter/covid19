@@ -1,6 +1,10 @@
 ```{r}
 library(ggplot2)
 library(ggrepel)
+library(futile.logger)
+library(tidyverse)
+source(file = "scraper.R")
+
 #====================
 # helper functions
 #====================
@@ -16,31 +20,36 @@ library(ggrepel)
 getFile<-function(fname)
 {
   df<-read.csv(fname,stringsAsFactors=F) # need factors as strings
-  df<- within(df,rm("Day", "Daily_Increase", "Daily_increase_percent","Daily_fatalities","positive","positive_percent","mortality_rate"))
+  cols<-length(colnames(df))
+  if (cols != 6){ #side-effects. eesh. sorry
+    flog.warn(paste("csv file doesn't have 13 columns:", fname,"column count:",cols))
+    return()
+  }
+  #df<- within(df,rm("Daily_fatalities","positive","positive_percent","mortality_rate"))
 
   #reformat Date factor as Date string
-  nc<-as.Date(df$Date,"%d/%m")
+  nc<-as.Date(df$Date,"%Y-%m-%d")
   df$Date<-nc
   return (df)
 }
 #====================
 # extract observations of interest.
 # input: dateframe holding csv date, indices of columns wanted. 
-#     p1=date, p2=all, p3=negative result, p4=positive results
-#     p5=fatal observations.
+#     p1=date, p2=all, p3=positive results
+#     p4=fatal observations.
 # output: data frame of observations.
 # Strictly, this function is unnecessary & is just to make code more readable.
-Observations<-function(csv,p1,p2,p3,p4,p5)
+Observations<-function(csv,p1,p2,p3,p4)
 {
 Obsv<-data.frame(
   Date=csv[p1][[colnames(csv[p1])]],
   All=csv[p2][[colnames(csv[p2])]],
-  Neg=csv[p3][[colnames(csv[p3])]],
-  Pos=csv[p4][[colnames(csv[p4])]],
-  Fatal=csv[p5][[colnames(csv[p5])]]
+  Pos=csv[p3][[colnames(csv[p3])]],
+  Fatal=csv[p4][[colnames(csv[p4])]]
 )
 return(Obsv)
 }
+
 #====================
 # Shave is for graph prettying.
 # replace values below a threshold with NA. Used to improve
@@ -57,24 +66,57 @@ return(ObsList)
 # main graphing stuff
 #====================
 
-covid19uk<-getFile("UK_Coronavirus_COVID-19_Figures-2.csv")
-obs<-Observations(covid19uk,1,3,4,2,6)
+csvfilename<- "UK_Coronavirus_COVID-19_Figures-2.csv"
+
+covid19uk<-getFile(csvfilename)
+if (is.null(covid19uk)){
+  flog.info("problem with covid csv file, bailing out of script.")
+  stop()
+  } 
+
+#scrape data from web
+cv_scrape<-scrape()
+
+# check date of scraped date versus csv date
+datediff=cv_scrape$report_date - covid19uk$Date[1]
+if(datediff==1){
+  flog.info("adding scraped data")
+  # add data to covid19uk dataframe
+  covid19uk <-covid19uk %>% add_row(Date=cv_scrape$report_date, Confirmed=cv_scrape$pos_tested, All_tests=cv_scrape$tested, Fatalities=cv_scrape$died, .before = 1)
+  # add it to csv file
+  write.table(covid19uk, file = csvfilename,row.names=FALSE, na="",col.names=TRUE, sep=",")
+}else if(datediff > 1){
+  flog.warn("You may be missing data: adding data with date several days later than lastest date in csv file.")
+} else if(datediff <0){
+  # warn we are adding data into the past
+  flog.warn("Date underflow: adding data dated older than latest date in csv file.")
+} else if(datediff==0){
+  flog.warn("You've already processed today's data.")
+}
+#-------------
+#extract observations of interest from dataframe
+obs<-Observations(covid19uk,1,3,2,6)
 
 # calculate daily death changes
 DeadChange2<-DeadChange<-c(diff(obs$Fatal)*-1,c(0))
-# create less busy labeling date rather than using a full data vector
+# for visual aesthetic reasons create a less busy 
+#     labeling date rather than using a full data vector
 DeadChange2<-Shave( DeadChange2,0) 
-
+# calculate changes in positiive tests
 PositiveChange2<-PositiveChange<-c(diff(obs$Pos)*-1,c(0))
+# create aesthetic vector for display
 PositiveChange2<-Shave( PositiveChange2,650)
 
-
+#-------------
 # graph daily deaths
-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange))+labs(title = "New deaths per day",x="Date",y="New deaths")+
+p0<-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange))+
+  labs(title = "New deaths per day @geeklawyer",x="Date",y="New deaths")+
   geom_point(y=DeadChange2)+
   geom_line()+
   geom_text(aes(label=DeadChange2,vjust=-0.3),nudge_x=1)
+p0
 dev.copy(jpeg,"covid19-deaths.jpg")
+dev.off()
 ```
 
 
@@ -90,7 +132,6 @@ p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
   geom_point(y=DeadChange2)+
   theme(legend.position=c(.1,.8))+
   labs(title = "Infections per day @geeklawyer",x="Date",y="New infections")
-
   p1
   dev.copy(jpeg,"covid19-statistics.jpg")
   dev.off()
@@ -99,12 +140,14 @@ p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
 TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
 TestsChange2<-Shave(TestsChange2,1500)
 
-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
+p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
   labs(title = "New tests per day @geeklawyer",x="Date",y="New tests")+
   geom_label_repel(y=TestsChange, label=TestsChange2, nudge_x = -3)+
   geom_point(y=TestsChange2)+
   geom_line()
+  p2 
   dev.copy(jpeg,"covid19-tests.jpg")
   #geom_text(aes(label=TestsChange2,vjust=-0.3),nudge_x=1)
+  dev.off()
 ```
 
