@@ -110,7 +110,7 @@ PositiveChange2<-Shave( PositiveChange2,650)
 #-------------
 # graph daily deaths
 p0<-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange))+
-  labs(title = "New deaths per day @geeklawyer",x="Date",y="New deaths")+
+  labs(title = "New UK deaths per day (@geeklawyer)",x="Date",y="New deaths")+
   geom_point(y=DeadChange2)+
   geom_line()+
   geom_text(aes(label=DeadChange2,vjust=-0.3),nudge_x=1)
@@ -131,7 +131,7 @@ p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
   geom_text(check_overlap = TRUE,aes(y=DeadChange, label=DeadChange2,vjust=-1))+
   geom_point(y=DeadChange2)+
   theme(legend.position=c(.1,.8))+
-  labs(title = "Infections per day @geeklawyer",x="Date",y="New infections")
+  labs(title = "UK Infections per day (@geeklawyer)",x="Date",y="New infections")
   p1
   dev.copy(jpeg,"covid19-statistics.jpg")
   dev.off()
@@ -141,7 +141,7 @@ TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
 TestsChange2<-Shave(TestsChange2,1500)
 
 p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
-  labs(title = "New tests per day @geeklawyer",x="Date",y="New tests")+
+  labs(title = "New UK tests per day (@geeklawyer)",x="Date",y="New tests")+
   geom_label_repel(y=TestsChange, label=TestsChange2, nudge_x = -3)+
   geom_point(y=TestsChange2)+
   geom_line()
