@@ -3,11 +3,13 @@
   library('rvest')
   library('stringr')
 
+  rm(scr)
+  
     scrape<-function()
     {
       govurl<-'https://gov.uk/guidance/coronavirus-covid-19-information-for-the-public'
       
-      pat_all<-"^As of 9am (.*), ([0-9,]+) tests have concluded, with ([0-9,]+) tests carried out on (.*) \\(this"
+      pat_all<-"^As of 9am on (.*), ([0-9,]+) .* with ([0-9,]+) .* on (.*). Some"
       pat_pos<-"^([0-9,]+) people .* of whom ([0-9,]+) tested positive."
       pat_died<-"^As of 5pm on (.*), .* coronavirus, ([0-9,]+) have died."
       
@@ -22,12 +24,10 @@
       positive_text<-str_match(positive_raw_text,pat_pos)
       death_text<-str_match(deaths_raw_text,pat_died)
       
-      
-      if ('NA' %in% all_text){
+      # sanity check
+      if (NA %in% all_text){
       flog.error("scraper failed with one or more NA terms, please check")   
       }
-      
-      
       
       scrape<-data.frame(
         report_date=as.Date(all_text[2],"%d %B"),
@@ -42,3 +42,4 @@
   
   scr<-scrape()
   scr
+  
