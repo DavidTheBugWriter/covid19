@@ -21,8 +21,8 @@ getFile<-function(fname)
 {
   df<-read.csv(fname,stringsAsFactors=F) # need factors as strings
   cols<-length(colnames(df))
-  if (cols != 6){ #side-effects. eesh. sorry
-    flog.warn(paste("csv file doesn't have 13 columns:", fname,"column count:",cols))
+  if (cols != 7){ #side-effects. eesh. sorry
+    flog.warn(paste("csv file doesn't have 7 columns:", fname,"column count:",cols))
     return()
   }
   #df<- within(df,rm("Daily_fatalities","positive","positive_percent","mortality_rate"))
@@ -82,9 +82,14 @@ datediff=cv_scrape$report_date - covid19uk$Date[1]
 if(datediff==1){
   flog.info("adding scraped data")
   # add data to covid19uk dataframe
-  covid19uk <-covid19uk %>% add_row(Date=cv_scrape$report_date, Confirmed=cv_scrape$pos_tested, All_tests=cv_scrape$tested, Fatalities=cv_scrape$died, .before = 1)
+  covid19uk <-covid19uk %>% add_row(Date=cv_scrape$report_date,
+                                    Daily_tests=cv_scrape$daily_tests,
+                                    Confirmed=cv_scrape$pos_tested,
+                                    All_tests=cv_scrape$tested, 
+                                    Fatalities=cv_scrape$died, 
+                                    .before = 1)
   # add it to csv file
-  write.table(covid19uk, file = csvfilename,row.names=FALSE, na="",col.names=TRUE, sep=",")
+  write.table(covid19uk, file = csvfilename,row.names=FALSE, na="0",col.names=TRUE, sep=",")
 }else if(datediff > 1){
   flog.warn("You may be missing data: adding data with date several days later than lastest date in csv file.")
 } else if(datediff <0){
@@ -92,6 +97,7 @@ if(datediff==1){
   flog.warn("Date underflow: adding data dated older than latest date in csv file.")
 } else if(datediff==0){
   flog.warn("You've already processed today's data.")
+  #write.table(covid19uk, file = csvfilename,row.names=FALSE, na="0",col.names=TRUE, sep=",")
 }
 #-------------
 #extract observations of interest from dataframe
@@ -138,6 +144,7 @@ p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
 ```
 ```{r}
 TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
+#TestsChange2<-TestsChange<-cv_scrape$daily_tests
 TestsChange2<-Shave(TestsChange2,1500)
 
 p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
