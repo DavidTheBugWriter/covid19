@@ -26,7 +26,9 @@ getFile<-function(fname)
     return()
   }
   #df<- within(df,rm("Daily_fatalities","positive","positive_percent","mortality_rate"))
-
+  alldt<-as.integer(df$All_tests)
+  df$All_tests<alldt  #not sure why only this is a string?
+  
   #reformat Date factor as Date string
   nc<-as.Date(df$Date,"%Y-%m-%d")
   df$Date<-nc
@@ -39,11 +41,15 @@ getFile<-function(fname)
 #     p4=fatal observations.
 # output: data frame of observations.
 # Strictly, this function is unnecessary & is just to make code more readable.
+
+# All is converted to integer, otherwise they get treated as a factors.
+
+
 Observations<-function(csv,p1,p2,p3,p4)
 {
 Obsv<-data.frame(
   Date=csv[p1][[colnames(csv[p1])]],
-  All=csv[p2][[colnames(csv[p2])]],
+  All=as.integer(csv[p2][[colnames(csv[p2])]]),
   Pos=csv[p3][[colnames(csv[p3])]],
   Fatal=csv[p4][[colnames(csv[p4])]]
 )
@@ -76,6 +82,11 @@ if (is.null(covid19uk)){
 
 #scrape data from web
 cv_scrape<-scrape()
+if (is.na(cv_scrape)){
+  flog.info("problem with scraping, bailing out of script.")
+  stop()
+  }
+  
 
 # check date of scraped date versus csv date
 datediff=cv_scrape$report_date - covid19uk$Date[1]
@@ -97,7 +108,6 @@ if(datediff==1){
   flog.warn("Date underflow: adding data dated older than latest date in csv file.")
 } else if(datediff==0){
   flog.warn("You've already processed today's data.")
-  #write.table(covid19uk, file = csvfilename,row.names=FALSE, na="0",col.names=TRUE, sep=",")
 }
 #-------------
 #extract observations of interest from dataframe
@@ -144,7 +154,6 @@ p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
 ```
 ```{r}
 TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
-#TestsChange2<-TestsChange<-cv_scrape$daily_tests
 TestsChange2<-Shave(TestsChange2,1500)
 
 p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
@@ -154,7 +163,6 @@ p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
   geom_line()
   p2 
   dev.copy(jpeg,"covid19-tests.jpg")
-  #geom_text(aes(label=TestsChange2,vjust=-0.3),nudge_x=1)
   dev.off()
 ```
 
