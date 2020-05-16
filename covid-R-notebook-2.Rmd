@@ -27,7 +27,7 @@ getFile<-function(fname)
   }
   #df<- within(df,rm("Daily_fatalities","positive","positive_percent","mortality_rate"))
   alldt<-as.integer(df$All_tests)
-  df$All_tests<alldt  #not sure why only this is a string?
+  df$All_tests<-alldt  #not sure why only this is a string?
   
   #reformat Date factor as Date string
   nc<-as.Date(df$Date,"%Y-%m-%d")
@@ -72,7 +72,7 @@ return(ObsList)
 # main graphing stuff
 #====================
 
-csvfilename<- "UK_Coronavirus_COVID-19_Figures-2.csv"
+csvfilename<- "UK_Coronavirus_COVID-19_Figures.csv"
 
 covid19uk<-getFile(csvfilename)
 if (is.null(covid19uk)){
@@ -82,11 +82,11 @@ if (is.null(covid19uk)){
 
 #scrape data from web
 cv_scrape<-scrape()
-if (is.na(cv_scrape)){
+if (NA %in% cv_scrape){
   flog.info("problem with scraping, bailing out of script.")
   stop()
   }
-  
+
 
 # check date of scraped date versus csv date
 datediff=cv_scrape$report_date - covid19uk$Date[1]
@@ -94,18 +94,22 @@ if(datediff==1){
   flog.info("adding scraped data")
   # add data to covid19uk dataframe
   covid19uk <-covid19uk %>% add_row(Date=cv_scrape$report_date,
-                                    Daily_tests=cv_scrape$daily_tests,
+                                  test_increase=cv_scrape$daily_tests,
                                     Confirmed=cv_scrape$pos_tested,
                                     All_tests=cv_scrape$tested, 
                                     Fatalities=cv_scrape$died, 
                                     .before = 1)
+  #adjust deaths since they are reported a day late: death value from today is
+  #actually yesterday's value
+  covid19uk$Fatalities[2]<-covid19uk$Fatalities[1]
+  covid19uk$Fatalities[1]<-NA
   # add it to csv file
   write.table(covid19uk, file = csvfilename,row.names=FALSE, na="0",col.names=TRUE, sep=",")
 }else if(datediff > 1){
-  flog.warn("You may be missing data: adding data with date several days later than lastest date in csv file.")
+  flog.warn("You may be missing data: adding data which is several days later than newest date in csv file. (Might need to manually add old data to csv file?)")
 } else if(datediff <0){
   # warn we are adding data into the past
-  flog.warn("Date underflow: adding data dated older than latest date in csv file.")
+  flog.warn("Date underflow: adding data dated older than newest date in csv file.")
 } else if(datediff==0){
   flog.warn("You've already processed today's data.")
 }
@@ -113,23 +117,27 @@ if(datediff==1){
 #extract observations of interest from dataframe
 obs<-Observations(covid19uk,1,3,2,6)
 
-# calculate daily death changes
+# calculate daily death changes by taking difference of adjacent values of daily total dead
 DeadChange2<-DeadChange<-c(diff(obs$Fatal)*-1,c(0))
-# for visual aesthetic reasons create a less busy 
-#     labeling date rather than using a full data vector
-DeadChange2<-Shave( DeadChange2,0) 
-# calculate changes in positiive tests
+DeadChange2[1]<-NA
+# calculate changes in positive tests
 PositiveChange2<-PositiveChange<-c(diff(obs$Pos)*-1,c(0))
-# create aesthetic vector for display
-PositiveChange2<-Shave( PositiveChange2,650)
+PositiveChange2[1]<-NA
 
+maxdailydead<-max(DeadChange2,na.rm=TRUE)
 #-------------
 # graph daily deaths
-p0<-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange))+
+p0<-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange2))+
   labs(title = "New UK deaths per day (@geeklawyer)",x="Date",y="New deaths")+
   geom_point(y=DeadChange2)+
   geom_line()+
-  geom_text(aes(label=DeadChange2,vjust=-0.3),nudge_x=1)
+  #add a linear regression smoothed line
+  scale_y_continuous(minor_breaks = seq(0,
+                                        maxdailydead,
+                                        200),
+                     sec.axis = sec_axis(~ . * 1.0, name = "UK Death"))+
+  geom_smooth(method="lm")
+#  geom_text(aes(label=DeadChange2,vjust=-0.3),nudge_x=1)
 p0
 dev.copy(jpeg,"covid19-deaths.jpg")
 dev.off()
@@ -137,32 +145,35 @@ dev.off()
 
 
 ```{r}
-p1<-ggplot(data=covid19uk, aes(x=obs$Date, label =rownames(covid19uk)))+
-  geom_label_repel(y=PositiveChange, label=PositiveChange2, nudge_x = -3)+
+maxdailypos<-max(PositiveChange,na.rm=TRUE)
+
+p1<-ggplot(data=covid19uk, aes(x=obs$Date))+
     scale_x_date(date_labels = "%m/%e", date_breaks = "7 day", date_minor_breaks = "1 day")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   geom_line(aes(y=PositiveChange,col="+ve"),group=1)+
   geom_point(y=PositiveChange2)+
-  
-  geom_line(aes(y=DeadChange,col="dead"))+
-  geom_text(check_overlap = TRUE,aes(y=DeadChange, label=DeadChange2,vjust=-1))+
-  geom_point(y=DeadChange2)+
-  theme(legend.position=c(.1,.8))+
-  labs(title = "UK Infections per day (@geeklawyer)",x="Date",y="New infections")
+  scale_y_continuous(breaks=seq(0, maxdailypos, 1000), 
+                     sec.axis = dup_axis())+
+  #geom_smooth(method="lm", aes(y=PositiveChange))
+  labs(title = "Positive test per day (@geeklawyer)",x="Date",y="New infections")
   p1
-  dev.copy(jpeg,"covid19-statistics.jpg")
+  dev.copy(jpeg,"covid19-daily_infections.jpg")
   dev.off()
 ```
 ```{r}
 TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
-TestsChange2<-Shave(TestsChange2,1500)
+maxdailytest<-max(TestsChange2,na.rm=TRUE)
 
 p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
+  scale_x_date(date_labels = "%m/%e", date_breaks = "7 day", date_minor_breaks = "1 day")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   labs(title = "New UK tests per day (@geeklawyer)",x="Date",y="New tests")+
-  geom_label_repel(y=TestsChange, label=TestsChange2, nudge_x = -3)+
   geom_point(y=TestsChange2)+
-  geom_line()
+  geom_line()+
+  scale_y_continuous(breaks=seq(0, maxdailytest, 5000), 
+                     sec.axis = dup_axis())
   p2 
-  dev.copy(jpeg,"covid19-tests.jpg")
+  dev.copy(jpeg,"covid19-tests_per_day.jpg")
   dev.off()
 ```
 
