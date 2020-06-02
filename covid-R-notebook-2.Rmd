@@ -3,71 +3,9 @@ library(ggplot2)
 library(ggrepel)
 library(futile.logger)
 library(tidyverse)
+source(file = "getfiledata.R")
 source(file = "scraper.R")
 
-#====================
-# helper functions
-#====================
-# function to read a CSV file and return a dataframe
-# input: name of a CSV file. 
-#   File has named columns for; 
-#   1) Total number of observations ('all)
-#   2) date of observation on month/day format: mm/dd
-#   3) total positives so far
-#   4) total fatalities so far
-#   other columns dropped.
-# returns: dataframe with observations
-getFile<-function(fname)
-{
-  df<-read.csv(fname,stringsAsFactors=F) # need factors as strings
-  cols<-length(colnames(df))
-  if (cols != 7){ #side-effects. eesh. sorry
-    flog.warn(paste("csv file doesn't have 7 columns:", fname,"column count:",cols))
-    return()
-  }
-  #df<- within(df,rm("Daily_fatalities","positive","positive_percent","mortality_rate"))
-  alldt<-as.integer(df$All_tests)
-  df$All_tests<-alldt  #not sure why only this is a string?
-  
-  #reformat Date factor as Date string
-  nc<-as.Date(df$Date,"%Y-%m-%d")
-  df$Date<-nc
-  return (df)
-}
-#====================
-# extract observations of interest.
-# input: dateframe holding csv date, indices of columns wanted. 
-#     p1=date, p2=all, p3=positive results
-#     p4=fatal observations.
-# output: data frame of observations.
-# Strictly, this function is unnecessary & is just to make code more readable.
-
-# All is converted to integer, otherwise they get treated as a factors.
-
-
-Observations<-function(csv,p1,p2,p3,p4)
-{
-Obsv<-data.frame(
-  Date=csv[p1][[colnames(csv[p1])]],
-  All=as.integer(csv[p2][[colnames(csv[p2])]]),
-  Pos=csv[p3][[colnames(csv[p3])]],
-  Fatal=csv[p4][[colnames(csv[p4])]]
-)
-return(Obsv)
-}
-
-#====================
-# Shave is for graph prettying.
-# replace values below a threshold with NA. Used to improve
-# appearance of crowded graph by not labeling or using plot points
-# for small values, e.g. at far left of busy graphs
-# input: Observation dataframe and the threshold level
-# output: adjusted dataframe
-Shave<-function(ObsList,threshold)
-{
-  ObsList[ObsList<=threshold]<-NA
-return(ObsList)
-}
 #====================
 # main graphing stuff
 #====================
@@ -80,30 +18,40 @@ if (is.null(covid19uk)){
   stop()
   } 
 
-#scrape data from web
 cv_scrape<-scrape()
 if (NA %in% cv_scrape){
   flog.info("problem with scraping, bailing out of script.")
   stop()
   }
-
-
 # check date of scraped date versus csv date
 datediff=cv_scrape$report_date - covid19uk$Date[1]
-if(datediff==1){
+if(datediff==1 ){
   flog.info("adding scraped data")
   # add data to covid19uk dataframe
   covid19uk <-covid19uk %>% add_row(Date=cv_scrape$report_date,
-                                  test_increase=cv_scrape$daily_tests,
                                     Confirmed=cv_scrape$pos_tested,
-                                    All_tests=cv_scrape$tested, 
+                                    Pos_today=cv_scrape$pos_today,
+                                    All_tests=cv_scrape$alltests, 
+                                    test_increase=cv_scrape$teststoday,
                                     Fatalities=cv_scrape$died, 
                                     .before = 1)
-  #adjust deaths since they are reported a day late: death value from today is
-  #actually yesterday's value
+  
+Date=covid19uk$Date
+Confirmed=as.integer(covid19uk$Confirmed)
+Pos=covid19uk$Confirmed
+Postoday=covid19uk$Pos_today
+Fatal=covid19uk$Fatalities
+
+#Testincr[1]<-NA #lose last data point as it's not released till tomorrow
+#scrape data from web
+  #adjust deaths &alltests since they are reported a day late: death &
+  #alltest values from today are #actually yesterday's values
   covid19uk$Fatalities[2]<-covid19uk$Fatalities[1]
   covid19uk$Fatalities[1]<-NA
-  # add it to csv file
+  covid19uk$test_increase[2]<-covid19uk$test_increase[1]
+  covid19uk$test_increase[1]<-NA
+
+    # add it to csv file
   write.table(covid19uk, file = csvfilename,row.names=FALSE, na="0",col.names=TRUE, sep=",")
 }else if(datediff > 1){
   flog.warn("You may be missing data: adding data which is several days later than newest date in csv file. (Might need to manually add old data to csv file?)")
@@ -114,30 +62,33 @@ if(datediff==1){
   flog.warn("You've already processed today's data.")
 }
 #-------------
-#extract observations of interest from dataframe
-obs<-Observations(covid19uk,1,3,2,6)
 
-# calculate daily death changes by taking difference of adjacent values of daily total dead
-DeadChange2<-DeadChange<-c(diff(obs$Fatal)*-1,c(0))
-DeadChange2[1]<-NA
+# calculate daily death changes by taking difference of adjacent values of daily total dead. Fudge deaths to account for government reporting deaths a day late
+Fatal[2]<-Fatal[1]
+Fatal[1]<-NA
+DeadChange<-c(diff(Fatal)*-1,c(0))
 # calculate changes in positive tests
-PositiveChange2<-PositiveChange<-c(diff(obs$Pos)*-1,c(0))
-PositiveChange2[1]<-NA
+PositiveChange<-c(diff(Confirmed)*-1,c(0))
+PositiveChange[1]<-NA
 
-maxdailydead<-max(DeadChange2,na.rm=TRUE)
+maxdailydead<-max(DeadChange,na.rm=TRUE)
 #-------------
 # graph daily deaths
-p0<-ggplot(data=covid19uk, aes(x=obs$Date,y=DeadChange2))+
+cd<-tail(DeadChange,-1) #pad length w/empty datapoint to stop ggplot/aes breaking
+ctail=tail(covid19uk,-1)
+taildate<-tail(Date,-1)
+p0<-ggplot(data=tail(covid19uk,-1),aes(taildate,cd))+
   labs(title = "New UK deaths per day (@geeklawyer)",x="Date",y="New deaths")+
-  geom_point(y=DeadChange2)+
+  geom_point()+
   geom_line()+
   #add a linear regression smoothed line
   scale_y_continuous(minor_breaks = seq(0,
-                                        maxdailydead,
+                                       maxdailydead,
                                         200),
                      sec.axis = sec_axis(~ . * 1.0, name = "UK Death"))+
-  geom_smooth(method="lm")
-#  geom_text(aes(label=DeadChange2,vjust=-0.3),nudge_x=1)
+  stat_smooth(method = "gam", formula = y ~ poly(x, 7), se = FALSE)
+#TODO: annotate not working?
+#  geom_label(aes(x = xd, y = 4000, label = "polynomial=7"))
 p0
 dev.copy(jpeg,"covid19-deaths.jpg")
 dev.off()
@@ -146,31 +97,33 @@ dev.off()
 
 ```{r}
 maxdailypos<-max(PositiveChange,na.rm=TRUE)
-
-p1<-ggplot(data=covid19uk, aes(x=obs$Date))+
+PositiveChange2=tail(PositiveChange,-1) #graph Increase a day behind as gov data a day late
+Date2=tail(Date,-1) #forget latest date when graphing to be consistent w/TestIncr
+p1<-ggplot(data=tail(covid19uk,-1), aes(x=Date2))+
     scale_x_date(date_labels = "%m/%e", date_breaks = "7 day", date_minor_breaks = "1 day")+
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-  geom_line(aes(y=PositiveChange,col="+ve"),group=1)+
+  geom_line(aes(y=PositiveChange2,col="+ve"),group=1)+
   geom_point(y=PositiveChange2)+
   scale_y_continuous(breaks=seq(0, maxdailypos, 1000), 
                      sec.axis = dup_axis())+
   #geom_smooth(method="lm", aes(y=PositiveChange))
-  labs(title = "Positive test per day (@geeklawyer)",x="Date",y="New infections")
+  labs(title = "Positive tests per day (@geeklawyer)",x="Date",y="New infections")
   p1
   dev.copy(jpeg,"covid19-daily_infections.jpg")
   dev.off()
 ```
 ```{r}
-TestsChange2<-TestsChange<-c(diff(obs$All)*-1,c(0))
-maxdailytest<-max(TestsChange2,na.rm=TRUE)
-
-p2<-ggplot(data=covid19uk, aes(x=obs$Date,y=TestsChange))+
+Testincr=covid19uk$test_increase
+maxdailytest<-max(Testincr,na.rm=TRUE)
+Testincr2=tail(Testincr,-1) #graph Increase a day behind as gov data a day late
+Date2=tail(Date,-1) #forget latest date when graphing to be consistent w/TestIncr
+p2<-ggplot(data=tail(covid19uk,-1), aes(x=Date2,y=Testincr2))+
   scale_x_date(date_labels = "%m/%e", date_breaks = "7 day", date_minor_breaks = "1 day")+
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+
   labs(title = "New UK tests per day (@geeklawyer)",x="Date",y="New tests")+
-  geom_point(y=TestsChange2)+
+  geom_point(y=Testincr2)+
   geom_line()+
-  scale_y_continuous(breaks=seq(0, maxdailytest, 5000), 
+  scale_y_continuous(breaks=seq(0, maxdailytest, 15000), 
                      sec.axis = dup_axis())
   p2 
   dev.copy(jpeg,"covid19-tests_per_day.jpg")
