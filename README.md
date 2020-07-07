@@ -1,6 +1,6 @@
 
-# 7th Jul 2020: project abandoned.tinue editing my sc
-THe DHSC keep changing the way they report statistics and I lack the time to rewrite the scaper to gather them.
+# 7th Jul 2020: project abandoned.
+THe DHSC keep changing the way they report statistics and I lack the time to rewrite the scaper to gather the data. I'm also doubtful of the reporting methodologies & untangling these is the job for a more dedictated person than I.
 
 
 Due to timing changes in UK government release of death data there are inaccuracies in dates of mortality figures. I may be able to correct these at some point and the error is probably fairly marginal.
@@ -13,4 +13,4 @@ Alternatively run the scraper which pulls data from .gov.uk website
 
 datasets:
 1)  [Department of Health and Social Care, Covid-19](https://www.gov.uk/guidance/coronavirus-covid-19-information-for-the-public)
-2)  [Office of National Statistics (not yet used)](https://www.ons.gov.uk/peoplepopulationandcommunity/healthandsocialcare/conditionsanddiseases)
+2)  [DHSC data (not used)](https://www.gov.uk/guidance/coronavirus-covid-19-information-for-the-public)
